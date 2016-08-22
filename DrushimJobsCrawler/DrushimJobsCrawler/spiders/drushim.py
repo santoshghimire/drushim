@@ -55,7 +55,10 @@ class DrushimSpider(scrapy.Spider):
 
 
         try:
-            company = job_container.xpath(".//a[@class='companyLink noToggle']/text()").extract_first()
+            # company = job_container.xpath(".//a[@class='companyLink noToggle']/text()").extract_first()
+            company = job_container.xpath(".//div[@class='fieldContainer vertical first']/"
+                                          "span[@class='fieldTitle']/text()").extract_first()
+
         except:
             company = ""
 
@@ -92,12 +95,12 @@ class DrushimSpider(scrapy.Spider):
                 job_description += "\n"
                 x += 1
         except:
-            job_description=""
+            job_description = ""
 
         item = DrushimjobscrawlerItem()
 
         item['DrushimJob'] = {
-            'Site' : 'Drushim',
+            'Site': 'Drushim',
             'Company': company,
             'Company_jobs': company_jobs,
             'Job_id' : job_id,
@@ -108,9 +111,6 @@ class DrushimSpider(scrapy.Spider):
             'Country_Areas': country_areas,
             'Job_categories': category,
             'AllJobs_Job_class': '',
-
-
-
         }
 
         yield item
