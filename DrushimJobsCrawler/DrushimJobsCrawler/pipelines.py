@@ -4,21 +4,23 @@
 #
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: http://doc.scrapy.org/en/latest/topics/item-pipeline.html
-
+import os
 
 import codecs
 import csv
 import pymysql
 pymysql.install_as_MySQLdb()
-
+from DrushimJobsCrawler import  settings
+import pandas as pd
 
 from twisted.enterprise import adbapi
 class DrushimjobscrawlerPipeline(object):
 
     def __init__(self):
 
-        self.csvwriter = csv.writer(codecs.open('DrushimJobsList.csv', 'a'))
-        self.csvwriter.writerow([
+        # self.csvwriter = csv.writer(codecs.open('DrushimJobsList.csv', 'a'))
+        self.unsorted_csvwriter = csv.writer(codecs.open('unsorted_DrushimJobsList.csv', 'a'))
+        self.unsorted_csvwriter.writerow([
             'Site',
             'Company',
             'Company_jobs',
@@ -32,8 +34,17 @@ class DrushimjobscrawlerPipeline(object):
             'AllJobs_Job_class',
         ])
 
+    def close_spider(self, spider):
+        df = pd.read_csv('unsorted_DrushimJobsList.csv')
+        sorted_csv = df.sort_values(by='Company', ascending=True)
+        sorted_csv.to_csv('DrushimJobsList.csv', index=False)
+        os.remove('unsorted_DrushimJobsList.csv')
+
+
+
+
     def process_item(self, item, spider):
-        self.csvwriter.writerow([
+        self.unsorted_csvwriter.writerow([
             item['DrushimJob']['Site'],
             item['DrushimJob']['Company'],
             item['DrushimJob']['Company_jobs'],
