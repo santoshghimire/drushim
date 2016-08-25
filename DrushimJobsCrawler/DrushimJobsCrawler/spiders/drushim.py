@@ -30,7 +30,7 @@ class DrushimSpider(scrapy.Spider):
 
         for job_link in job_link_list:
 
-            yield scrapy.Request(job_link,callback=self.parse_each_job,dont_filter=True)
+            yield scrapy.Request(job_link, callback=self.parse_each_job, dont_filter=True)
 
         next_pagi = main_content_job_list.xpath(".//a[@class='pager lightBg stdButton']/@href").extract_first()
         if next_pagi:
