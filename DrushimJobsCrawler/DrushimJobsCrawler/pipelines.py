@@ -159,7 +159,7 @@ class MySQLPipeline(object):
         self.ids_seen = set()
 
     @classmethod
-    def from_settings(cls,settings):
+    def from_settings(cls, settings):
         dbargs = dict(
             host=settings['MYSQL_HOST'],
             db=settings['MYSQL_DBNAME'],
