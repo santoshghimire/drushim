@@ -15,17 +15,20 @@ import pandas as pd
 from xlutils.copy import copy
 from xlrd import open_workbook
 from twisted.enterprise import adbapi
+from scrapy.exceptions import DropItem
 
 pymysql.install_as_MySQLdb()
 
 from DrushimJobsCrawler import  settings
 
 excel_file_path = "../../site_data.xls"
+# excel_file_path = "../site_data.xls"
 
 
 class DrushimjobscrawlerPipeline(object):
 
     def __init__(self):
+        self.ids_seen = set()
 
         self.sheet_name = 'Drushim'  # name of the sheet for current website
         self.unsorted_temp_site_data_xls = 'unsorted_site_data.xls'  # temporary xls file which contain scraped item
@@ -58,6 +61,7 @@ class DrushimjobscrawlerPipeline(object):
                 self.sheet.write(0, 8, 'Country_Areas')
                 self.sheet.write(0, 9, 'Job_categories')
                 self.sheet.write(0, 10, 'AllJobs_Job_class')
+                self.sheet.write(0, 11, 'unique_id')
 
                 self.next_row = self.sheet.last_used_row
 
@@ -80,6 +84,7 @@ class DrushimjobscrawlerPipeline(object):
             self.sheet.write(0, 8, 'Country_Areas')
             self.sheet.write(0, 9, 'Job_categories')
             self.sheet.write(0, 10, 'AllJobs_Job_class')
+            self.sheet.write(0, 11, 'unique_id')
 
             self.next_row = self.sheet.last_used_row
 
@@ -112,36 +117,46 @@ class DrushimjobscrawlerPipeline(object):
 
         else:
             """ if site_data.xls doesnot exists"""
-            unsorted_xls_df = pd.read_excel(self.unsorted_temp_site_data_xls)
-            sorted_xls = unsorted_xls_df.sort_values(by='Company')
-            sorted_xls = sorted_xls.drop_duplicates()
-            sorted_xls.to_excel(excel_file_path, index=False, sheet_name=self.sheet_name)
-            os.remove(self.unsorted_temp_site_data_xls)
+            try:
+                unsorted_xls_df = pd.read_excel(self.unsorted_temp_site_data_xls)
+                sorted_xls = unsorted_xls_df.sort_values(by='Company')
+                sorted_xls = sorted_xls.drop_duplicates()
+                sorted_xls.to_excel(excel_file_path, index=False, sheet_name=self.sheet_name)
+                os.remove(self.unsorted_temp_site_data_xls)
+            except:
+                pass
 
     def process_item(self, item, spider):
+        if item['DrushimJob']['Job_id'] in self.ids_seen:
+            raise DropItem("*"*100+"\n"+"Duplicate item found: %s" % item + "\n"+"*"*100)
 
-        self.next_row += 1
-        self.sheet.write(self.next_row, 0, item['DrushimJob']['Site'])
-        self.sheet.write(self.next_row, 1, item['DrushimJob']['Company'])
-        self.sheet.write(self.next_row, 2, item['DrushimJob']['Company_jobs'])
-        self.sheet.write(self.next_row, 3, item['DrushimJob']['Job_id'])
-        self.sheet.write(self.next_row, 4, item['DrushimJob']['Job_title'])
-        self.sheet.write(self.next_row, 5, item['DrushimJob']['Job_Description'])
-        self.sheet.write(self.next_row, 6, item['DrushimJob']['Job_Post_Date'])
-        self.sheet.write(self.next_row, 7, item['DrushimJob']['Job_URL'])
-        self.sheet.write(self.next_row, 8, item['DrushimJob']['Country_Areas'])
-        self.sheet.write(self.next_row, 9, item['DrushimJob']['Job_categories'])
-        self.sheet.write(self.next_row, 10, item['DrushimJob']['AllJobs_Job_class'])
+        else:
+            self.ids_seen.add(item['DrushimJob']['Job_id'])
 
-        self.book.save(self.unsorted_temp_site_data_xls)
+            self.next_row += 1
+            self.sheet.write(self.next_row, 0, item['DrushimJob']['Site'])
+            self.sheet.write(self.next_row, 1, item['DrushimJob']['Company'])
+            self.sheet.write(self.next_row, 2, item['DrushimJob']['Company_jobs'])
+            self.sheet.write(self.next_row, 3, item['DrushimJob']['Job_id'])
+            self.sheet.write(self.next_row, 4, item['DrushimJob']['Job_title'])
+            self.sheet.write(self.next_row, 5, item['DrushimJob']['Job_Description'])
+            self.sheet.write(self.next_row, 6, item['DrushimJob']['Job_Post_Date'])
+            self.sheet.write(self.next_row, 7, item['DrushimJob']['Job_URL'])
+            self.sheet.write(self.next_row, 8, item['DrushimJob']['Country_Areas'])
+            self.sheet.write(self.next_row, 9, item['DrushimJob']['Job_categories'])
+            self.sheet.write(self.next_row, 10, item['DrushimJob']['AllJobs_Job_class'])
+            self.sheet.write(self.next_row, 11, item['DrushimJob']['unique_id'])
 
-        return item
+            self.book.save(self.unsorted_temp_site_data_xls)
+
+            return item
 
 
 class MySQLPipeline(object):
 
     def __init__(self, dbpool):
         self.dbpool = dbpool
+        self.ids_seen = set()
 
     @classmethod
     def from_settings(cls,settings):
@@ -157,14 +172,20 @@ class MySQLPipeline(object):
         return cls(dbpool)
 
     def process_item(self, item, spider):
-        dbpool = self.dbpool.runInteraction(self.insert, item, spider)
-        dbpool.addErrback(self.handle_error, item, spider)
-        dbpool.addBoth(lambda _: item)
-        return dbpool
+        if item['DrushimJob']['Job_id'] in self.ids_seen:
+
+            raise DropItem("+"*100+"\n"+"Duplicate item found: %s" % item + "\n"+"+"*100)
+        else:
+            self.ids_seen.add(item['DrushimJob']['Job_id'])
+            dbpool = self.dbpool.runInteraction(self.insert, item, spider)
+            dbpool.addErrback(self.handle_error, item, spider)
+            dbpool.addBoth(lambda _: item)
+            return dbpool
 
     def insert(self, conn, item, spider):
+
         conn.execute("""
-            INSERT INTO drushim (
+            INSERT INTO sites_datas (
             Site,
             Company,
             Company_jobs,
@@ -175,9 +196,10 @@ class MySQLPipeline(object):
             Job_URL,
             Country_Areas,
             Job_categories,
-            AllJobs_Job_class
+            AllJobs_Job_class,
+            unique_id
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s)
         """, (
             item['DrushimJob']['Site'],
             item['DrushimJob']['Company'],
@@ -189,7 +211,8 @@ class MySQLPipeline(object):
             item['DrushimJob']['Job_URL'],
             item['DrushimJob']['Country_Areas'],
             item['DrushimJob']['Job_categories'],
-            item['DrushimJob']['AllJobs_Job_class']
+            item['DrushimJob']['AllJobs_Job_class'],
+            item['DrushimJob']['unique_id']
 
         ))
         spider.log("Item stored in dbSchema: %s %r" % (item['DrushimJob']['Job_id'], item))

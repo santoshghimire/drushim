@@ -6,12 +6,18 @@ from DrushimJobsCrawler.items import DrushimjobscrawlerItem
 import sys
 import locale
 import codecs
+import re
 
 class DrushimSpider(scrapy.Spider):
     name = "drushim"
     allowed_domains = ["drushim.co.il"]
     start_urls = (
         'http://www.drushim.co.il/jobs/search',
+        # 'https://www.drushim.co.il/job/11815780/e4078443/',
+        # 'https://www.drushim.co.il/job/11838542/a2330222/',
+        # 'https://www.drushim.co.il/job/11858720/d09149b9/',
+        # 'https://www.drushim.co.il/job/11857561/7d34ad0e/',
+        # 'https://www.drushim.co.il/job/11857561/7d34ad0e/',
     )
 
     def __init__(self):
@@ -39,9 +45,11 @@ class DrushimSpider(scrapy.Spider):
             yield scrapy.Request(next_pagi, callback=self.parse)
 
     def parse_each_job(self, response):
+    # def parse(self, response):
         # inspect_response(response,self)
 
         job_container = response.xpath("//div[@class='jobContainer']")
+        job_fields_sel_list = response.xpath("//div[@class='jobFields']/*")
 
 
         try:
@@ -50,8 +58,7 @@ class DrushimSpider(scrapy.Spider):
             job_id = ""
 
         try:
-            job_title_sel = job_container.xpath(".//h1[@class='jobName']")
-            job_title = job_title_sel.xpath("string()").extract_first()
+            job_title = job_container.xpath(".//h1[@class='jobName']/text()").extract_first()
         except:
             job_title = ""
 
@@ -71,13 +78,23 @@ class DrushimSpider(scrapy.Spider):
 
         field_container_sel_list = job_container.xpath(".//div[@class='fieldContainer horizontal']")
         try:
-            job_post_date = field_container_sel_list[-1].xpath(".//span[@class='fieldText rtl']/text()").extract_first()
+            job_description = "\n".join(job_fields_sel_list.xpath("string()").extract())
+            job_post_date = re.findall(r'\d\d/\d\d/\d\d\d\d', job_description)
+
+            if job_post_date:
+                job_post_date = job_post_date[0]
+            else:
+
+                field_container_sel_list = job_container.xpath(".//div[@class='fieldContainer horizontal']")
+                job_post_date = field_container_sel_list[-1].xpath(".//span[@class='fieldText rtl']/text()").extract_first()
 
         except:
+
             job_post_date = ""
 
+
         try:
-            country_areas = field_container_sel_list[1].xpath(".//span[@class='fieldText rtl']/text()").extract_first()
+            country_areas = job_fields_sel_list[4].xpath(".//span/text()")[-1].extract()
         except:
             country_areas = ""
 
@@ -87,15 +104,19 @@ class DrushimSpider(scrapy.Spider):
             category = ""
 
         try:
-            job_fields_sel_list = response.xpath("//div[@class='jobFields']/div")
+            job_description = "\n".join(job_fields_sel_list[1:].xpath("string()").extract())
+            job_description = job_description.replace(re.findall(r'\d\d/\d\d/\d\d\d\d\n?(.*)', job_description)[0], "")
 
-            job_description = ""
-            x = 0
-            while x < len(job_fields_sel_list)-1:
 
-                job_description += job_fields_sel_list[x].xpath('string()').extract_first()
-                job_description += "\n"
-                x += 1
+            #
+            # job_fields_sel_list = response.xpath("//div[@class='jobFields']/div")
+            # job_description = ""
+            # x = 0
+            # while x < len(job_fields_sel_list)-1:
+            #
+            #     job_description += job_fields_sel_list[x].xpath('string()').extract_first()
+            #     job_description += "\n"
+            #     x += 1
         except:
             job_description = ""
 
@@ -105,7 +126,7 @@ class DrushimSpider(scrapy.Spider):
             'Site': 'Drushim',
             'Company': company,
             'Company_jobs': company_jobs,
-            'Job_id' : job_id,
+            'Job_id': job_id,
             'Job_title': job_title,
             'Job_Description': job_description,
             'Job_Post_Date': job_post_date,
@@ -113,6 +134,7 @@ class DrushimSpider(scrapy.Spider):
             'Country_Areas': country_areas,
             'Job_categories': category,
             'AllJobs_Job_class': '',
+            'unique_id': 'drushim_{}'.format(job_id)
         }
 
         yield item
